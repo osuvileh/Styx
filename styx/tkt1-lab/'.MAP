@@ -1,0 +1,7 @@
+
+ Start  Stop   Length Name                   Class
+ 00000H 0F9FFH 0FA00H memscreen              (none)                
+ 0FA00H 1F3FFH 0FA00H background             (none)                
+ 1F400H 1F5FFH 00200H mystack                (none)                
+ 1F600H 1F673H 00074H mydata                 (none)                
+ 1F674H 1F8EAH 00277H mycode                 (none)                

@@ -36,10 +36,11 @@ foo	resw			1
 pressesc dw		0
 oldintseg resw	1
 oldintoff resw		1
-delay dw			300
 graphicm resb	100
 move dw			1
 playerlocation dw 2883
+conquer dw		0
+pressshift dw		0
 
 
 segment mycode code			;code segment
@@ -60,32 +61,38 @@ KeybInt:
         loopnz .getstatus      ; wait until the port is ready
         in al, 60h         ; Get the scan code of
                        ; the pressed/released key
-					   
+	
+	.shift:
+		cmp al, 2ah
+		jne .esc
+		mov word [pressshift], 1
+		jmp .kbread
+
 	.esc:
 		cmp al, 01h
 		jne .moveup
 		mov word [pressesc], 1
 		jmp .kbread
 		
-	.moveup:
+	.moveup:			;arrow up
 		cmp al, 48h
 		jne .movedown
 		mov word [move], -320
 		jmp .kbread
 		
-	.movedown:
+	.movedown:		;arrow down
 		cmp al, 50h
 		jne .moveleft
 		mov word [move], 320
 		jmp .kbread
 		
-	.moveleft:
+	.moveleft:			;arrow left
 		cmp al, 4bh
 		jne .moveright
 		mov word [move], -1
 		jmp .kbread
 		
-	.moveright
+	.moveright		;arrow right
 		cmp al, 4dh
 		jne .kbread
 		mov word [move], 1
@@ -108,22 +115,22 @@ KeybInt:
     iret                    ; return from interrupt
 
 initBackground:
+	;load background
 	mov ax, background
 	mov es, ax
 	mov	di, 2880
 	
 	mov byte [es:di], blue
 	
-	.topline:
+	.topline:		;top grey line
 		cmp	di, 3520
 		je .botline
 		mov byte [es:di], grey
 		inc di
 		jmp .topline
 
-	.botline:
+	.botline:		;bottom grey line
 		mov	di, 62400
-		jmp .botloop
 		.botloop:
 			cmp	di, 63040
 			je	.side
@@ -131,9 +138,8 @@ initBackground:
 			inc di
 			jmp	.botloop	
 		
-	.side:
+	.side:			;blue sidepanel and horizontal grey line
 		mov	di, 2880
-		jmp .sideloop
 		.sideloop:
 			cmp di, 63040
 			je .infopanel
@@ -159,9 +165,8 @@ initBackground:
 			inc	di
 			jmp .sideloop
 
-	.infopanel:
+	.infopanel:		;blue infopanel
 		mov	di, 0
-		jmp .infoloop
 		.infoloop:
 			cmp	di, 2880
 			je .botpanel
@@ -169,9 +174,8 @@ initBackground:
 			inc	di
 			jmp .infoloop
 
-	.botpanel:
+	.botpanel:		;blue botpanel
 		mov	di, 63040
-		jmp .botploop
 		.botploop:
 			cmp	di, 64000
 			je .end
@@ -237,12 +241,14 @@ drawPlayer:
 	pusha
 
 	mov word ax, [playerlocation]
-	
+
+	;draw upper two pixels
 	mov	di, ax
 	mov	byte [es:di], red
 	inc	di
 	mov	byte [es:di], red
 
+	;draw lower two pixels
 	add ax, 320
 	mov di, ax
 	mov	byte [es:di], red
@@ -250,7 +256,6 @@ drawPlayer:
 	mov	byte [es:di], red
 
 	popa
-	
 	ret
 
 drawStyx:
@@ -260,16 +265,72 @@ movePlayer:
 	push ax
 	push di
 
+	;load current position
 	mov ax, background
 	mov es, ax
-    
-    mov word ax, [move]
-    add word ax, [playerlocation]
-	
+	mov word ax, [move]
+	add word ax, [playerlocation]
 	mov di, ax
-	cmp byte [es:di], grey
-	jne .moveit
-	mov word [playerlocation], ax
+	
+	;check if player is conquering area
+	cmp word [conquer], 1
+	je .moveend
+	cmp word [pressshift], 1
+	jne .movegrey
+	
+	;area conquer
+	.moveconquer:
+		mov word ax, [move]
+		add word ax, [playerlocation]
+		mov di, ax
+		cmp byte [es:di], blue	;check if player is in blue pixel
+		je .moveit
+
+		add ax, 321
+		mov di, ax
+		cmp byte [es:di], blue	;check if player is in blue pixel
+		je .moveit
+		sub ax, 321
+		mov word [playerlocation], ax	;if player is not in blue, make the move
+		
+		;check if the player has moved to unconquered area
+		mov di, ax
+		cmp byte [es:di], black
+		jne .moveit
+		
+		add ax, 321
+		mov di, ax
+		cmp byte [es:di], black
+		jne .moveit
+		mov word [conquer], 1
+		jmp .moveit
+
+	;check if the player has returned to the grey area
+	.moveend:
+		mov word ax, [playerlocation]
+		mov di, ax
+		cmp byte [es:di], grey
+		jne .moveconquer
+
+		add ax, 321
+		mov di, ax
+		cmp byte [es:di], grey
+		jne .moveconquer
+		mov word [conquer], 0		;set conquering flags
+		mov word [pressshift], 0	;0 if player is in grey area
+		jmp .moveit
+		
+	;normal movement in grey area
+	.movegrey:
+		cmp byte [es:di], grey	;move + current position
+		jne .moveit					;has to be in grey area
+											;otherwise stop movement
+		add ax, 321
+		mov di, ax
+		cmp byte [es:di], grey
+		jne .moveit
+		sub ax, 321
+		mov word [playerlocation], ax ;make the grey area move
 
 	.moveit:
 		pop di
@@ -319,9 +380,8 @@ movePlayer:
 
 	call initBackground
 
-	
 	.mainloop:
-		mov word dx, [delay]
+		mov dx, 300
 		.pause1:
 			mov cx, 3000
 		.pause2:
