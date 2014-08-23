@@ -97,7 +97,6 @@ KeybInt:
 		jne .kbread
 		mov word [move], 1
 
-
     .kbread:
         in al, 61h         ; send acknowledgment without
         or al, 10000000b   ; modifying the other bits.
@@ -116,19 +115,23 @@ KeybInt:
 
 initBackground:
 	pusha
+
 	;load background
 	mov ax, background
 	mov es, ax
 	
-	mov	di, 2880
-	.topline:		;top grey line
-		cmp	di, 3200
-		je .botline
-		mov byte [es:di], grey
-		inc di
-		jmp .topline
-
-	.botline:		;bottom grey line
+	;top grey line
+	.topline:
+		mov	di, 2880
+		.toploop:
+			cmp	di, 3200
+			je .botline
+			mov byte [es:di], grey
+			inc di
+			jmp .toploop
+	
+	;bottom grey line
+	.botline:
 		mov	di, 62720
 		.botloop:
 			cmp	di, 63040
@@ -136,8 +139,9 @@ initBackground:
 			mov byte [es:di], grey
 			inc di
 			jmp	.botloop	
-		
-	.side:			;blue sidepanel and horizontal grey line
+	
+	;blue sidepanel and horizontal grey line
+	.side:
 		mov	di, 2880
 		.sideloop:
 			cmp	di, 63040
@@ -160,7 +164,8 @@ initBackground:
 			inc di
 			jmp .sideloop
 			
-	.infopanel:		;blue infopanel
+	;blue infopanel
+	.infopanel:	
 		mov	di, 0
 		.infoloop:
 			cmp	di, 2880
@@ -169,7 +174,8 @@ initBackground:
 			inc	di
 			jmp .infoloop
 
-	.botpanel:		;blue botpanel
+	;blue botpanel
+	.botpanel:
 		mov	di, 63040
 		.botploop:
 			cmp	di, 64000
@@ -215,12 +221,12 @@ copyMemScreen:
 	push ds
 	pusha
 
-	;Pointers
+	;pointers
 	mov word si, 0
 	mov word di, 0
 	mov cx, 64000
  
-	;Segment registers to correct locations
+	;segment registers to correct locations
 	mov ax, videobase
 	mov es, ax
 	mov ax, memscreen
@@ -236,20 +242,8 @@ copyMemScreen:
 drawPlayer:
 	pusha
 
-	mov word ax, [playerlocation]
-
-	;draw upper two pixels
-	mov	di, ax
+	mov	word di, [playerlocation]
 	mov	byte [es:di], red
-	;inc	di
-	;mov	byte [es:di], red
-
-	;draw lower two pixels
-	;add ax, 320
-	;mov di, ax
-	;mov	byte [es:di], red
-	;inc	di
-	;mov	byte [es:di], red
 
 	popa
 	ret
@@ -258,8 +252,7 @@ drawStyx:
 	ret
 
 movePlayer:
-	push ax
-	push di
+	pusha
 
 	;load current position
 	mov ax, background
@@ -294,73 +287,67 @@ movePlayer:
 	
 	;check if the player has returned to the grey area
 	.moveend:
-		mov word ax, [playerlocation]
-		mov di, ax
-		cmp byte [es:di], grey
+		mov word di, [playerlocation]
+		cmp byte [es:di], grey	;check if the player has returned to grey area
 		jne .drawtrail
 		mov word [conquer], 0		;set conquering flags
 		mov word [pressshift], 0	;0 if player is in grey area
 		jmp .moveit
-		
+
+	;draw trail for conquered area	
+	.drawtrail:	
+		mov word di, [playerlocation]
+		mov byte [es:di], white
+		jmp .moveconquer
+
 	;normal movement in grey area
 	.movegrey:
 		cmp byte [es:di], grey	;move + current position
 		jne .moveit					;has to be in grey area
-											;otherwise stop movement
-
 		mov word [playerlocation], ax ;make the grey area move
 		jmp .moveit
 
 	.moveit:
-		pop di
-		pop ax
+		popa
 		ret
-
-	;draw trail for conquered area	
-	.drawtrail:	
-		mov word ax, [playerlocation]
-		mov di, ax
-		mov byte [es:di], white
-
-		jmp .moveconquer
 
 ..start:
 
-	; init segment reg
+	;init segment reg
 	mov ax, mydata
 	mov ds, ax
     mov ax, mystack
     mov ss, ax
     mov sp, stacktop
 	
-	; save old address
+	;save old address
 	mov ah, 35h
 	mov al, 9h
 	int 21h
 	mov word [oldintseg], es
 	mov	word [oldintoff], bx
 	
-	; new interrupt
-	mov	 word dx, KeybInt
-	mov  word ax, mycode
+	;new interrupt
+	mov	word dx, KeybInt
+	mov word ax, mycode
 	mov	ds, ax
 	mov	ah, 25h
 	mov al, 9h
 	int 21h
 	
-	; re-initialisation of  the data segment
+	;re-initialisation of  the data segment
     mov ax, mydata
     mov ds, ax
-	; old graphic modes
+	;old graphic modes
 	mov	ah, 0fh
-	int	10h
+	int 10h
 
 	mov	byte [graphicm], al
 	
-	; new graphic modes
+	;new graphic modes
 	mov	ah, 0
 	mov	al, 13h
-	int	10h
+	int 10h
 
 	mov ax, videobase
 	mov es, ax
@@ -387,12 +374,12 @@ movePlayer:
 
 .dosexit:
 	
-	; reset graphic mode
+	;reset graphic mode
 	mov	ah, 0
 	mov	byte al, [graphicm]
 	int 10h
 
-	; restoring old interrupt
+	;restoring old interrupt
 	mov	word dx, [oldintoff]
 	mov	word ax, [oldintseg]
 	mov ds, ax
@@ -400,7 +387,7 @@ movePlayer:
 	mov al, 9h
 	int 21h
 
-	; end program int 21.4c
+	;end program int 21.4c
 	mov	al, 0
 	mov ah, 4ch
 	int 21h
