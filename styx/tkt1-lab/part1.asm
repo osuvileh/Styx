@@ -115,22 +115,21 @@ KeybInt:
     iret                    ; return from interrupt
 
 initBackground:
+	pusha
 	;load background
 	mov ax, background
 	mov es, ax
+	
 	mov	di, 2880
-	
-	;mov byte [es:di], blue
-	
 	.topline:		;top grey line
-		cmp	di, 3199
+		cmp	di, 3200
 		je .botline
 		mov byte [es:di], grey
 		inc di
 		jmp .topline
 
 	.botline:		;bottom grey line
-		mov	di, 62400
+		mov	di, 62720
 		.botloop:
 			cmp	di, 63040
 			je	.side
@@ -141,30 +140,26 @@ initBackground:
 	.side:			;blue sidepanel and horizontal grey line
 		mov	di, 2880
 		.sideloop:
-			cmp di, 63040
+			cmp	di, 63040
 			je .infopanel
-			mov byte [es:di], blue
-			inc	di
 			mov	byte [es:di], blue
-			inc	di
-			mov byte [es:di], blue
-			inc	di
-			mov byte [es:di], grey
-			inc	di
-			mov byte [es:di], grey
-			add di, 311
-			mov byte [es:di], grey
-			inc	di
-			mov byte [es:di], grey
-			inc	di
-			mov byte [es:di], blue	
-			inc	di
+			inc di
 			mov	byte [es:di], blue
-			inc	di
-			mov byte [es:di], blue
-			inc	di
+			inc di
+			mov	byte [es:di], blue
+			inc di
+			mov	byte [es:di], grey
+			add di, 313
+			mov	byte [es:di], grey
+			inc di
+			mov	byte [es:di], blue
+			inc di
+			mov	byte [es:di], blue
+			inc di
+			mov	byte [es:di], blue
+			inc di
 			jmp .sideloop
-
+			
 	.infopanel:		;blue infopanel
 		mov	di, 0
 		.infoloop:
@@ -180,10 +175,11 @@ initBackground:
 			cmp	di, 64000
 			je .end
 			mov	byte [es:di], blue
-			inc	di
+			inc di
 			jmp .botploop
 
 	 .end:
+		popa
 		ret
 
 draw:
@@ -285,20 +281,11 @@ movePlayer:
 		mov di, ax
 		cmp byte [es:di], blue	;check if player is in blue pixel
 		je .moveit
-
-		add ax, 321
-		mov di, ax
-		cmp byte [es:di], blue	;check if player is in blue pixel
+		cmp byte [es:di], white	;check if player is in white pixel
 		je .moveit
-		sub ax, 321
 		mov word [playerlocation], ax	;if player is not in blue, make the move
 		
 		;check if the player has moved to unconquered area
-		mov di, ax
-		cmp byte [es:di], black
-		jne .moveit
-		
-		add ax, 321
 		mov di, ax
 		cmp byte [es:di], black
 		jne .moveit
@@ -311,11 +298,6 @@ movePlayer:
 		mov di, ax
 		cmp byte [es:di], grey
 		jne .drawtrail
-
-		add ax, 321
-		mov di, ax
-		cmp byte [es:di], grey
-		jne .drawtrail
 		mov word [conquer], 0		;set conquering flags
 		mov word [pressshift], 0	;0 if player is in grey area
 		jmp .moveit
@@ -325,11 +307,7 @@ movePlayer:
 		cmp byte [es:di], grey	;move + current position
 		jne .moveit					;has to be in grey area
 											;otherwise stop movement
-		add ax, 321
-		mov di, ax
-		cmp byte [es:di], grey
-		jne .moveit
-		sub ax, 321
+
 		mov word [playerlocation], ax ;make the grey area move
 		jmp .moveit
 
