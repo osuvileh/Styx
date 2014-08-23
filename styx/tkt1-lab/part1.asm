@@ -120,10 +120,10 @@ initBackground:
 	mov es, ax
 	mov	di, 2880
 	
-	mov byte [es:di], blue
+	;mov byte [es:di], blue
 	
 	.topline:		;top grey line
-		cmp	di, 3520
+		cmp	di, 3199
 		je .botline
 		mov byte [es:di], grey
 		inc di
@@ -245,15 +245,15 @@ drawPlayer:
 	;draw upper two pixels
 	mov	di, ax
 	mov	byte [es:di], red
-	inc	di
-	mov	byte [es:di], red
+	;inc	di
+	;mov	byte [es:di], red
 
 	;draw lower two pixels
-	add ax, 320
-	mov di, ax
-	mov	byte [es:di], red
-	inc	di
-	mov	byte [es:di], red
+	;add ax, 320
+	;mov di, ax
+	;mov	byte [es:di], red
+	;inc	di
+	;mov	byte [es:di], red
 
 	popa
 	ret
@@ -304,18 +304,18 @@ movePlayer:
 		jne .moveit
 		mov word [conquer], 1
 		jmp .moveit
-
+	
 	;check if the player has returned to the grey area
 	.moveend:
 		mov word ax, [playerlocation]
 		mov di, ax
 		cmp byte [es:di], grey
-		jne .moveconquer
+		jne .drawtrail
 
 		add ax, 321
 		mov di, ax
 		cmp byte [es:di], grey
-		jne .moveconquer
+		jne .drawtrail
 		mov word [conquer], 0		;set conquering flags
 		mov word [pressshift], 0	;0 if player is in grey area
 		jmp .moveit
@@ -331,11 +331,20 @@ movePlayer:
 		jne .moveit
 		sub ax, 321
 		mov word [playerlocation], ax ;make the grey area move
+		jmp .moveit
 
 	.moveit:
 		pop di
 		pop ax
 		ret
+
+	;draw trail for conquered area	
+	.drawtrail:	
+		mov word ax, [playerlocation]
+		mov di, ax
+		mov byte [es:di], white
+
+		jmp .moveconquer
 
 ..start:
 
