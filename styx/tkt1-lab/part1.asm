@@ -12,16 +12,16 @@ videobase		EQU 0a000h
 
 black			EQU 00000000b
 green			EQU 00001010b
-blue				EQU 00000001b
+blue			EQU 00000001b
 red				EQU 00000100b
 white			EQU 00001111b
-grey				EQU 00000111b
-
+grey			EQU 00000111b
+darkgrey		EQU 00001000b
 yellow			EQU 00001110b
-lighred			EQU 00001100b
+lightred		EQU 00001100b
 lightcyan		EQU 00001011b
 brown			EQU 00000111b
-cyan				EQU 00000011b
+cyan			EQU 00000011b
 lightblue		EQU 00001001b
 
 
@@ -44,24 +44,29 @@ segment mydata data						; data segment
 ; variables here
 
 pressesc		dw		0
-oldintseg		resw		1
-oldintoff		resw		1
-graphicm		resb		100
-playermove	dw		1
+oldintseg		resw	1
+oldintoff		resw	1
+graphicm		resb	100
+playermove		dw		1
 styxmove		dw		1
-playerlocation dw		2883
+trailtracemove  dw    	0
+playerlocation 	dw		2883
 styxlocation	dw		10950
+trailtraceloca  dw      0
 styx_in			dw		0
 trailcount		dw		0
-conquer		dw		0
+conquer			dw		0
 pressshift		dw		0
-
-left				dw		0
-right				dw		0
+trailarrive		dw		0 ;checks if trail comes from bottom
+traildepart		dw		0 ;checks if trail turns down
+check			dw		0 ; 0 up 1 down, tells which way to check for  trail
+left			dw		0
+right			dw		0
 top				dw		0
 bot				dw		0
-conquercount dd      	0
-
+conquercount 	dd      0
+currentcolour 	dw		0 ;0 lightblue 1 lightred 2 cyan
+colourcounter 	dw		0
 segment mycode code						;code segment
 ; subroutines
 
@@ -367,7 +372,16 @@ movePlayer:
 
 		mov word [conquer], 0			;set conquering flags
 		mov word [pressshift], 0		;0 if player is in grey area
+        mov byte [es:di], white
+        mov word ax, [playerlocation]
+        mov word [trailtraceloca], ax
+        mov word ax, [playermove]
+        mov word [trailtracemove], ax
+
+        
+        call trailToEdge
 		call drawME
+		
 		jmp .end
 
 	;draw trail for conquered area
@@ -387,6 +401,7 @@ movePlayer:
 		jmp .end
 
 	.automove:
+        mov word di, [playerlocation]
 		cmp word [playermove], -1
 		je .updown
 		cmp word [playermove], 1
@@ -397,45 +412,36 @@ movePlayer:
 		je .leftright
 
 		.updown:
-			mov word di, [playerlocation]
 			add di, 320
 			cmp byte [es:di], grey
 			jne .moveup
 
 			.movedown:
 				mov word [playermove], 320
-				mov word ax, [playermove]
-				add word ax, [playerlocation]
-				mov word [playerlocation], ax
-				jmp .end
+                jmp .makemove
 
 			.moveup:
 				mov word [playermove], -320
-				mov word ax, [playermove]
-				add word ax, [playerlocation]
-				mov word [playerlocation], ax
-				jmp .end
+                jmp .makemove
 
 		.leftright:
-			mov word di, [playerlocation]
 			add di, 1
 			cmp byte [es:di], grey
 			jne .moveleft
 
 			.moveright:
 				mov word [playermove], 1
-				mov word ax, [playermove]
-				add word ax, [playerlocation]
-				mov word [playerlocation], ax
-				jmp .end
-
+                jmp .makemove
+                
 			.moveleft:
 				mov word [playermove], -1
-				mov word ax, [playermove]
-				add word ax, [playerlocation]
-				mov word [playerlocation], ax
-				jmp .end
-
+                jmp .makemove
+                
+        .makemove:
+            mov word ax, [playermove]
+            add word ax, [playerlocation]
+            mov word [playerlocation], ax
+            jmp .end
 	.end:
 	popa
 	ret
@@ -516,12 +522,14 @@ checkLeft:
 	cmp byte [es:di], grey
 	je .setFlag
 	cmp byte [es:di], white
-	je .setFlag
+	je .gameOver
 	jmp short .end
-
+	.gameOver:
+        cmp word [pressesc], 1
+        jne .gameOver
+        call dosexit
 	.setFlag:
 		mov word [left], 1
-
 	.end:
 	popa
 	ret
@@ -539,12 +547,14 @@ checkRight:
 	cmp byte [es:di], grey
 	je .setFlag
 	cmp byte [es:di], white
-	je .setFlag
+	je .gameOver
 	jmp short .end
-
+        .gameOver:
+        cmp word [pressesc], 1
+        jne .gameOver
+        call dosexit
 	.setFlag:
 		mov word [right], 1
-
 	.end:
 	popa
 	ret
@@ -562,12 +572,14 @@ checkTop:
 	cmp byte [es:di], grey
 	je .setFlag
 	cmp byte [es:di], white
-	je .setFlag
+	je .gameOver
 	jmp short .end
-
+        .gameOver:
+        cmp word [pressesc], 1
+        jne .gameOver
+        call dosexit
 	.setFlag:
 		mov word [top], 1
-
 	.end:
 	popa
 	ret
@@ -585,16 +597,18 @@ checkBot:
 	cmp byte [es:di], grey
 	je .setFlag
 	cmp byte [es:di], white
-	je .setFlag
+	je .gameOver
 	jmp short .end
-
+        .gameOver:
+        cmp word [pressesc], 1
+        jne .gameOver
+        call dosexit
 	.setFlag:
 		mov word [bot], 1
-
 	.end:
 	popa
 	ret
-
+    
 randMove:		 ;generate a rand no using the system time
 	pusha
 
@@ -659,29 +673,23 @@ randMove:		 ;generate a rand no using the system time
 
 	.moveupleft:
 		mov word [styxmove], -321
-		add word ax, [styxmove]
-		mov word [styxlocation], ax
 		jmp .moveend
 
 	.moveupright:
 		mov word [styxmove], -319
-		add word ax, [styxmove]
-		mov word [styxlocation], ax
 		jmp .moveend
 
 	.movedownright:
 		mov word [styxmove], 321
-		add word ax, [styxmove]
-		mov word [styxlocation], ax
 		jmp .moveend
 
 	.movedownleft:
 		mov word [styxmove], 319
-		add word ax, [styxmove]
-		mov word [styxlocation], ax
 		jmp .moveend
 
 	.moveend:
+        add word ax, [styxmove]
+		mov word [styxlocation], ax
 		mov word [left], 0
 		mov word [right], 0
 		mov word [top], 0
@@ -691,70 +699,71 @@ randMove:		 ;generate a rand no using the system time
 	ret
 
 drawME:
-    pusha
+	pusha
 
 	mov word [conquercount], 0
-    mov ax, background
-    mov es, ax
-    mov di, 2880
+	mov ax, background
+	mov es, ax
+	mov di, 2880
 	
-    .calcarea:
-        cmp di, 63040
-        je .calcper
-        cmp byte [es:di], white
-        jne .nextpixel
+	.calcarea:
+		cmp di, 63040
+		je .calcper
+		cmp byte [es:di], black
+		jne .nextpixel
 
-        mov word ax, [conquercount]
-        inc ax
-        mov word [conquercount], ax
-            
-        .nextpixel:
-            inc di
-            jmp .calcarea
-            
-    .calcper:
+		mov word ax, [conquercount]
+		inc ax
+		mov word [conquercount], ax
+		
+		.nextpixel:
+			inc di
+			jmp short .calcarea
+		
+	.calcper:
 		mov di, 0
-        mov word ax, [conquercount]
-        mov cx, 580			;black area in pixels ~58032
+		mov ax, 58032
+		sub word ax, [conquercount]
+		mov cx, 580
 		xor dx, dx
-        div cx
+		div cx
 
 		xor dx, dx
-        mov cx, 10
-        div cx
+		mov cx, 10
+		div cx
 
-    .drawfirst:
+	.drawfirst:
 		call .drawone
-        cmp ax, 1
-        je .drawsecond
+		cmp ax, 1
+		je .drawsecond
 		
 		call .drawseven
-        cmp ax, 7
-        je .drawsecond
-       
+		cmp ax, 7
+		je .drawsecond
+	
 		call .drawthree
-        cmp ax, 3
-        je .drawsecond
-       
+		cmp ax, 3
+		je .drawsecond
+	
 		call .drawfive
-        cmp ax, 5
-        je .drawsecond
+		cmp ax, 5
+		je .drawsecond
 
 		call .drawtwo
-        cmp ax, 2
-        je .drawsecond
-        
-		call .drawsix
-        cmp ax, 6
+		cmp ax, 2
 		je .drawsecond
-            
+		
+		call .drawsix
+		cmp ax, 6
+		je .drawsecond
+			
 		call .draweight
 		cmp ax, 8
-		je .drawsecond
+		je .overJump
 		
 		call .drawnine
 		cmp ax, 9
-		je .drawsecond
+		je .overJump
 
 		call .drawfour
 		cmp ax, 4
@@ -764,37 +773,40 @@ drawME:
 		cmp ax, 0
 		je .drawsecond
 
-    .drawsecond:
+	.overJump:
+		jmp .gameOver
+
+	.drawsecond:
 		mov di, 5
 		call .drawone
-        cmp dx, 1
-        je .end
+		cmp dx, 1
+		je .end
 		
 		mov di, 5
 		call .drawseven
-        cmp dx, 7
-        je .end
-       
-	    mov di, 5
-	 	call .drawthree
-        cmp dx, 3
-        je .end
-       
-	    mov di, 5
+		cmp dx, 7
+		je .end
+	
+		mov di, 5
+		call .drawthree
+		cmp dx, 3
+		je .end
+	
+		mov di, 5
 		call .drawfive
-        cmp dx, 5
-        je .end
+		cmp dx, 5
+		je .end
 
 		mov di, 5
 		call .drawtwo
-        cmp dx, 2
-        je .end
-        
+		cmp dx, 2
+		je .end
+		
 		mov di, 5
 		call .drawsix
-        cmp dx, 6
+		cmp dx, 6
 		je .end
-         
+		
 		mov di, 5
 		call .draweight
 		cmp dx, 8
@@ -804,12 +816,12 @@ drawME:
 		call .drawnine
 		cmp dx, 9
 		je .end
-        
+		
 		mov di, 5
 		call .drawfour
 		cmp dx, 4
 		je .end
-		 
+		
 		mov di, 5
 		call .drawzero
 		cmp dx, 0
@@ -820,6 +832,11 @@ drawME:
 	popa
 	ret
 
+	.gameOver:
+		cmp word [pressesc], 1
+		jne .gameOver
+		call dosexit
+	
 	.drawzero:
 		add di, 570
 		mov byte [es:di], red
@@ -978,8 +995,503 @@ drawME:
 		mov di, 0
 
 		ret
+trailToEdge:
+    ;paints trail white
+    mov ax, background
+	mov es, ax
 
+    mov word ax, [trailtraceloca]
+    add word ax, [trailtracemove]
+    mov di, ax
+    
+    cmp byte [es:di], white
+    je .done
+    cmp byte [es:di], grey
+    jne .automove
+
+    mov word [trailtraceloca], ax
+    mov byte [es:di], white
+    jmp trailToEdge
+
+    .done: 
+        ; mov word di, 630
+        ; mov byte [es:di], black
+        ; add di, 320
+        ; mov byte [es:di], black
+		call findStyx
+		call fillArea
+		call whiteToGrey
+		call greyToTrail
+        ret
+    
+    .automove:
+        mov word di, [trailtraceloca]
+        cmp word [trailtracemove], -1
+        je .updown
+        cmp word [trailtracemove], 1
+        je .updown
+        cmp word [trailtracemove], -320
+        je .leftright
+        cmp word [trailtracemove], 320
+        je .leftright
+   
+    .updown:
+        add di, 320
+        cmp byte [es:di], grey
+        jne .moveup
+
+        .movedown:
+            mov word [trailtracemove], 320
+            jmp .makemove
+        .moveup:
+            mov word [trailtracemove], -320            
+            jmp .makemove
+    
+    .leftright:
+        add di, 1
+        cmp byte [es:di], grey
+        jne .moveleft
+        .moveright:
+            mov word [trailtracemove], 1
+            jmp .makemove
+        .moveleft:
+            mov word [trailtracemove], -1
+            jmp .makemove
+
+    .makemove:
+        mov word ax, [trailtraceloca]
+        add word ax, [trailtracemove]
+        mov word [trailtraceloca], ax
+        mov di, ax
+        mov byte [es:di], white
+        jmp trailToEdge
+ 
+
+
+	
+whiteToGrey: ;called from trailtoedge
+	pusha
+	mov word ax, 2882 ; 2563 ; above player location, holds left border
+	mov di, ax
+	.iterpixels:
+		inc di
+		cmp byte [es:di], white
+		je .paint
+		cmp byte [es:di], grey
+		je .paint
+		cmp di, 63040
+		je .done
+		
+		jmp .iterpixels
+	.paint:
+		mov byte [es:di], darkgrey
+		jmp .iterpixels
+	.done:
+		popa
+		ret
+
+greyToTrail:
+	pusha
+	mov word ax, 2882
+	mov di, ax
+	.iterpixels:
+		inc di
+		cmp byte [es:di], darkgrey ;check if pixel trail
+		je .checkneighbours
+		cmp di, 63037
+		je .done
+		jmp .iterpixels
+		
+	.checkneighbours:
+		;checks if pixel has black neighbours
+		push di
+		
+		dec di ;check left
+		cmp byte [es:di], black
+		je .paint
+		
+		add di, 320 ;check left below
+		cmp byte [es:di], black
+		je .paint
+		inc di ;check below
+		cmp byte [es:di], black
+		je .paint
+		
+		inc di ;check right below
+		cmp byte [es:di], black
+		je .paint
+
+		sub di, 320 ;check right
+		cmp byte [es:di], black
+		je .paint
+		
+		sub di, 320 ;check right above
+		cmp byte [es:di], black
+		je .paint
+		dec di ;check above
+		cmp byte [es:di], black
+		je .paint
+		dec di ;check left above
+		cmp byte [es:di], black
+		je .paint
+		
+		pop di
+		
+		jmp .iterpixels ;else next pixel
+		
+	.paint:
+		pop di
+		mov byte [es:di], grey
+		jmp .iterpixels ;continue loop
+	.done:
+		popa
+		ret
+	; ; ; ; STARTING FROM STYX LOCATION:
+    ; ; ; ; SET COUNT = 0
+    ; ; ; ; FOR EVERY PIXEL UNTIL AT THE RIGHT BORDER:
+        ; ; ; ; IF PIXEL = TRAIL:
+            ; ; ; ; IF PIXEL(DOWN):
+                ; ; ; ; CHECK = UP
+            ; ; ; ; ELSE:
+                ; ; ; ; CHECK = DOWN
+            ; ; ; ; WHILE PIXEL (RIGHT) = TRAIL:
+                ; ; ; ; MOVE TO NEXT PIXEL TO RIGHT
+            ; ; ; ; IF PIXEL(CHECK):
+                ; ; ; ; INCREMENT COUNT
+    ; ; ; ; SET STYX_IN = COUNT MODULO 2
+    		
+findStyx:
+	pusha
+	mov word [trailcount], 0
+	mov word ax, [styxlocation]
+	add word ax, 1
+	mov di, ax
+	
+	.iter:
+		inc di
+		cmp byte [es:di], white
+		je .checkpixel
+		cmp byte [es:di], blue
+		je  .modulo
+		jmp .iter
+
+	.checkpixel: ;white found
+
+		inc di ; check if next pixel white
+		cmp word [es:di], white ;check next pixel
+		je .looppixel
+		add word [trailcount], 1 ;if no 2 whites in row
+		jmp .iter ;replaces ret
+	
+	.looppixel:
+
+		inc di
+		cmp word [es:di], white
+		je .looppixel
+		
+		add word [trailcount], 1 ;trail end found, proceed
+		
+		jmp .iter
+		
+	.modulo:
+		mov dx, 0
+		mov word ax, [trailcount]
+		mov bx, 2
+		div bx
+		mov word [styx_in], dx
+		; ; mod == 1 styx inside
+		mov word di, 630 ;debug
+		inc di
+		mov byte [es:di], blue
+		add di, 320
+		mov byte [es:di], blue ;end of debug
+		cmp word dx, 1
+		;----------debug
+		jne .modzero
+		jmp .modin
+		
+		push di
+		mov word di, 630
+		inc di
+		mov byte [es:di], blue
+		add di, 320
+		mov byte [es:di], blue
+		pop di
+		popa
+		ret
+		
+	.modin:
+		mov word di, 630
+		inc di
+		mov byte [es:di], red
+		add di, 320
+		mov byte [es:di], red
+		popa
+		ret
+		;styx outside polygon
+	.modzero:
+		mov word di, 630
+		inc di
+		mov byte [es:di], black
+		add di, 320
+		mov byte [es:di], black
+		popa
+		ret
+		;---------end of debug
+		
+		
+fillArea:
+	pusha
+	;set count =0
+	mov word [trailcount], 0
+	mov word ax, 2882 ; 2563 ; above player location, holds left border
+	mov di, ax ;di holds pixel index all the time
+	jmp .iterlines
+	
+	.done:
+		popa
+		ret
+		
+	.paintblue:
+		mov byte [es:di], lightblue
+		jmp .iterpixels
+	.paintred:
+		mov byte [es:di], lightred
+		jmp .iterpixels
+	.paintcyan:
+		mov byte [es:di], lightcyan
+		jmp .iterpixels
+		
+	.iterlines: ;for every line
+		add word ax, 320
+		mov di, ax
+		mov word [trailcount], 0
+		cmp word di,  62722 ;quit at the beginning of last line
+		je .done
+		
+		jmp .iterpixels ;else iterate through the line
+		
+	.iterpixels: ;for every pixel in line
+		inc di
+		cmp byte [es:di], black
+		je .checkcount ;if pixel black
+		 
+		cmp byte [es:di], white
+		je .checkpixel ;if trail
+		
+		cmp byte [es:di], blue
+		je .iterlines ;if outside
+		
+		jmp .iterpixels
+	.checkcount:
+		;----get modulo of trailcount
+		push ax ;push index to stack
+
+		mov dx, 0
+		mov word ax, [trailcount]
+		mov bx, 2
+		div bx
+		mov word [trailarrive], dx
+		pop ax ;pop index back to ax
+		
+		mov word dx, [trailarrive]
+		
+		cmp word dx, [styx_in]
+		jne .paint
+		
+		jmp .iterpixels ;else continue to next pixel	
+	.paint:
+		cmp word [currentcolour], 0 
+		je .paintblue
+		cmp word [currentcolour], 1 
+		je .paintcyan
+		cmp word [currentcolour], 2 
+		je .paintred
+		
+		jmp .iterpixels ;continue to next pixel
+	.checkpixel:
+		
+		inc di ;check right == trail
+		cmp byte [es:di], white  ;if 2 whites in row
+		je .checkstart ;check if trail came from below
+		add word [trailcount], 1 ;end of edge found
+		
+		dec di ;back to previous pixel for inc in iterpixels
+		jmp .iterpixels
+		
+	.checkstart:
+		mov word [trailarrive], 0;reset on new trail edge 0 = pixel up
+		mov word [traildepart], 0 ;0 = pixel down
+		push di
+		dec di ;return back to trail
+		add word di, 320 ;check pixel below at the corner of trail
+		cmp byte [es:di], white
+		je .down
+		pop di ;else up, initialized to up
+		jmp .succwhite ;else pixel up and while right == trail
+	.down: ;sets trailarrive down
+		pop di
+
+		mov word [trailarrive], 1 ;startpoint down found, endpoint init'd up
+		jmp .succwhite
+		
+	.checkdown:
+		push di
+		add word di, 320
+		cmp byte [es:di], white
+		jne .up ;end goes down
+		pop di
+		jmp .cmpcheck
+	.up: ;sets traildepart up
+		pop di
+		mov word [traildepart],1 ;endpoint init down
+		jmp .cmpcheck
+		
+	.succwhite:
+		inc di
+		cmp byte [es:di], white
+		je .succwhite ;trail end not found
+		dec di ;return to previous pixel for check
+		cmp word [trailarrive], 0
+		je .checkdown ;check down if arrive up
+		
+		jmp .checkup
+		
+	.checkup:
+		push di
+		sub word di, 320
+		cmp byte [es:di], white
+		je .up ;end goes down
+		pop di
+		jmp .cmpcheck
+		
+	
+	.cmpcheck:
+		mov word dx, [trailarrive]
+		cmp word dx, [traildepart]
+		je .trailencounter
+		push di
+		mov word di, 630
+		mov byte [es:di], cyan
+		add di, 320
+		mov byte [es:di], cyan
+		pop di
+		jmp .iterpixels ;else go back to rolling
+	
+	.trailencounter:
+		add word [trailcount], 1 ;end of edge found
+		jmp .iterpixels
+	
+drawColour:
+	push di
+	cmp word [currentcolour], 0
+	je .drawblue
+	cmp word [currentcolour], 1 
+	je .drawcyan
+	cmp word [currentcolour], 2 
+	je .drawred
+	pop di
+	ret
+	.drawblue:
+		mov word di, 930
+		mov byte [es:di], lightblue
+		add di, 320
+		mov byte [es:di], lightblue
+		add di, 320
+		mov byte [es:di], lightblue
+		inc di
+		mov byte [es:di], lightblue
+		sub di, 320
+		mov byte [es:di], lightblue
+		sub di, 320
+		mov byte [es:di], lightblue
+		inc di
+		mov byte [es:di], lightblue
+		add di, 320
+		mov byte [es:di], lightblue
+		add di, 320
+		mov byte [es:di], lightblue
+		pop di
+		ret
+	.drawred:
+		jmp .red
+	.drawcyan:
+		mov word di, 930
+		mov byte [es:di], lightcyan
+		add di, 320
+		mov byte [es:di], lightcyan
+		add di, 320
+		mov byte [es:di], lightcyan
+		inc di
+		mov byte [es:di], lightcyan
+		sub di, 320         
+		mov byte [es:di], lightcyan
+		sub di, 320         
+		mov byte [es:di], lightcyan
+		inc di                 
+		mov byte [es:di], lightcyan
+		add di, 320         
+		mov byte [es:di], lightcyan
+		add di, 320         
+		mov byte [es:di], lightcyan
+		pop di
+		ret
+	.red:
+		mov word di, 930
+		mov byte [es:di], lightred
+		add di, 320            
+		mov byte [es:di], lightred
+		add di, 320            
+		mov byte [es:di], lightred
+		inc di                    
+		mov byte [es:di], lightred
+		sub di, 320           
+		mov byte [es:di], lightred
+		sub di, 320           
+		mov byte [es:di], lightred
+		inc di                    
+		mov byte [es:di], lightred
+		add di, 320            
+		mov byte [es:di], lightred
+		add di, 320            
+		mov byte [es:di], lightred
+		pop di
+		ret
+	
+setColour:
+	;sets colour at loop intervals and returns to main program.
+	
+	
+	cmp word [colourcounter], 0
+	je .blue
+	cmp word [colourcounter], 100
+	je .cyan
+	cmp word [colourcounter], 150
+	je .red
+	
+	
+	cmp word [colourcounter], 200
+	je .reset
+	add word [colourcounter], 1
+	ret
+	.blue:
+		mov word [currentcolour], 0 
+		add word [colourcounter], 1
+		ret
+	.cyan:
+		mov word [currentcolour], 1
+		add word [colourcounter], 1
+		ret
+	.red:
+		mov word [currentcolour], 2
+		add word [colourcounter], 1
+		ret
+	.reset:
+		mov word [colourcounter], 0
+		ret
+		
 ..start:
+
 	;init segment reg
 	mov ax, mydata
 	mov ds, ax
@@ -1020,7 +1532,7 @@ drawME:
 	mov es, ax
 
 	call initBackground
-	call randMove
+    call randMove
 
 	.mainloop:
 		mov dx, 10
@@ -1031,18 +1543,24 @@ drawME:
 			jne .pause2
 			dec dx
 			jne .pause1
-
+			
 		call moveStyx
 		call draw
 		call movePlayer
-		call moveStyx
+		call setColour
+		call drawColour
+		;call trailToEdge
+
+        call moveStyx
+        
+        
 
 		cmp word [pressesc], 1
-		jne short .mainloop
-		jmp short .dosexit
-
-
+		jne .mainloop
+        jmp .dosexit
+        
 .dosexit:
+
 	;reset graphic mode
 	mov	ah, 0
 	mov	byte al, [graphicm]
@@ -1060,3 +1578,24 @@ drawME:
 	mov al, 0
 	mov ah, 4ch
 	int 21h
+
+.end
+
+dosexit:
+        ;reset graphic mode
+        mov     ah, 0
+        mov     byte al, [graphicm]
+        int 10h
+ 
+        ;restoring old interrupt
+        mov     word dx, [oldintoff]
+        mov     word ax, [oldintseg]
+        mov ds, ax
+        mov ah, 25h
+        mov al, 9h
+        int 21h
+ 
+        ;end program int 21.4c
+        mov al, 0
+        mov ah, 4ch
+        int 21h
